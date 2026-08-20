@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from plugboard_schemas.connector import ConnectorMode, ConnectorSpec
 import pytest
-import pytest_cases
+from pytest_lazy_fixtures import lf
 
 from plugboard.connector import (
     Connector,
@@ -23,16 +23,15 @@ from tests.unit.test_channel import (  # noqa: F401
 )
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize(zmq_pubsub_proxy=[True])
-def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnector]]:
+@pytest.fixture(params=[True], ids=["zmq_pubsub_proxy=True"])
+def zmq_connector_cls(request: pytest.FixtureRequest) -> _t.Iterator[_t.Type[ZMQConnector]]:
     """Returns the ZMQConnector class with the specified proxy setting.
 
     Patches the env var `PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY` to control the proxy setting.
     """
     with patch.dict(
         os.environ,
-        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(zmq_pubsub_proxy)},
+        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(request.param)},
     ):
         testing_settings = Settings()
         DI.settings.override_sync(testing_settings)
@@ -40,23 +39,19 @@ def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnecto
         DI.settings.reset_override_sync()
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize("_connector_cls", [RabbitMQConnector, zmq_connector_cls, RedisConnector])
-def connector_cls(_connector_cls: type[Connector]) -> type[Connector]:
+@pytest.fixture(params=[RabbitMQConnector, lf("zmq_connector_cls"), RedisConnector])
+def connector_cls(request: pytest.FixtureRequest) -> type[Connector]:
     """Fixture for `Connector` of various types."""
-    return _connector_cls
+    return request.param
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize(
-    "_connector_cls_mp", [RabbitMQConnector, zmq_connector_cls, RedisConnector]
-)
-def connector_cls_mp(_connector_cls_mp: type[Connector]) -> type[Connector]:
+@pytest.fixture(params=[RabbitMQConnector, lf("zmq_connector_cls"), RedisConnector])
+def connector_cls_mp(request: pytest.FixtureRequest) -> type[Connector]:
     """Fixture for `Connector` of various types for use in multiprocess context."""
-    return _connector_cls_mp
+    return request.param
 
 
-@pytest_cases.parametrize("connector_cls", [RabbitMQConnector, RedisConnector])
+@pytest.mark.parametrize("connector_cls", [RabbitMQConnector, RedisConnector])
 async def test_channel_broker_url_unset(connector_cls: type[Connector], job_id_ctx: str) -> None:
     """Test that attempting to connect a channel without the broker URL set raises an error."""
     spec = ConnectorSpec(mode=ConnectorMode.PIPELINE, source="test.send", target="test.recv")

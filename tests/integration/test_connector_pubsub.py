@@ -5,7 +5,7 @@ import typing as _t
 from unittest.mock import patch
 
 import pytest
-import pytest_cases
+from pytest_lazy_fixtures import lf
 
 from plugboard.connector import (
     Connector,
@@ -24,16 +24,15 @@ from tests.unit.test_connector_pubsub import (  # noqa: F401
 )
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize(zmq_pubsub_proxy=[True])
-def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnector]]:
+@pytest.fixture(params=[True], ids=["zmq_pubsub_proxy=True"])
+def zmq_connector_cls(request: pytest.FixtureRequest) -> _t.Iterator[_t.Type[ZMQConnector]]:
     """Returns the ZMQConnector class with the specified proxy setting.
 
     Patches the env var `PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY` to control the proxy setting.
     """
     with patch.dict(
         os.environ,
-        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(zmq_pubsub_proxy)},
+        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(request.param)},
     ):
         testing_settings = Settings()
         DI.settings.override_sync(testing_settings)
@@ -41,19 +40,18 @@ def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnecto
         DI.settings.reset_override_sync()
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize(_connector_cls=[RabbitMQConnector, zmq_connector_cls, RedisConnector])
-def connector_cls(_connector_cls: type[Connector]) -> type[Connector]:
+@pytest.fixture(params=[RabbitMQConnector, lf("zmq_connector_cls"), RedisConnector])
+def connector_cls(request: pytest.FixtureRequest) -> type[Connector]:
     """Fixture for `Connector` of various types."""
-    return _connector_cls
+    return request.param
 
 
 @pytest.mark.asyncio
-@pytest_cases.parametrize(
-    "connector_cls, num_subscribers, num_messages",
+@pytest.mark.parametrize(
+    "num_subscribers, num_messages",
     [
-        (connector_cls, 1, 100),
-        (connector_cls, 10, 100),
+        (1, 100),
+        (10, 100),
     ],
 )
 async def test_pubsub_channel_single_publisher(
@@ -68,11 +66,11 @@ async def test_pubsub_channel_single_publisher(
 
 
 @pytest.mark.asyncio
-@pytest_cases.parametrize(
-    "connector_cls, num_publishers, num_subscribers, num_messages",
+@pytest.mark.parametrize(
+    "num_publishers, num_subscribers, num_messages",
     [
-        (connector_cls, 10, 1, 100),
-        (connector_cls, 10, 10, 100),
+        (10, 1, 100),
+        (10, 10, 100),
     ],
 )
 async def test_pubsub_channel_multiple_publishers(
@@ -93,11 +91,11 @@ async def test_pubsub_channel_multiple_publishers(
 
 
 @pytest.mark.asyncio
-@pytest_cases.parametrize(
-    "connector_cls, num_topics, num_publishers, num_subscribers, num_messages",
+@pytest.mark.parametrize(
+    "num_topics, num_publishers, num_subscribers, num_messages",
     [
-        (connector_cls, 3, 10, 1, 100),
-        (connector_cls, 3, 10, 10, 100),
+        (3, 10, 1, 100),
+        (3, 10, 10, 100),
     ],
 )
 async def test_pubsub_channel_multiple_topics_and_publishers(

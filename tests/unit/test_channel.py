@@ -6,7 +6,7 @@ import typing as _t
 from unittest.mock import patch
 
 import pytest
-import pytest_cases
+from pytest_lazy_fixtures import lf
 from ray.util.multiprocessing import Pool
 from that_depends import ContextScopes, container_context
 
@@ -34,16 +34,15 @@ TEST_ITEMS = [
 ]
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize(zmq_pubsub_proxy=[False])
-def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnector]]:
+@pytest.fixture(params=[False], ids=["zmq_pubsub_proxy=False"])
+def zmq_connector_cls(request: pytest.FixtureRequest) -> _t.Iterator[_t.Type[ZMQConnector]]:
     """Returns the ZMQConnector class with the specified proxy setting.
 
     Patches the env var `PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY` to control the proxy setting.
     """
     with patch.dict(
         os.environ,
-        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(zmq_pubsub_proxy)},
+        {"PLUGBOARD_FLAGS_ZMQ_PUBSUB_PROXY": str(request.param)},
     ):
         testing_settings = Settings()
         DI.settings.override_sync(testing_settings)
@@ -51,11 +50,10 @@ def zmq_connector_cls(zmq_pubsub_proxy: bool) -> _t.Iterator[_t.Type[ZMQConnecto
         DI.settings.reset_override_sync()
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize("_connector_cls", [AsyncioConnector, RayConnector, zmq_connector_cls])
-def connector_cls(_connector_cls: type[Connector]) -> type[Connector]:
+@pytest.fixture(params=[AsyncioConnector, RayConnector, lf("zmq_connector_cls")])
+def connector_cls(request: pytest.FixtureRequest) -> type[Connector]:
     """Fixture for `Connector` of various types."""
-    return _connector_cls
+    return request.param
 
 
 @pytest.mark.asyncio
@@ -90,11 +88,10 @@ async def test_channel(connector_cls: type[Connector], ray_ctx: None, job_id_ctx
     assert send_channel.is_closed
 
 
-@pytest_cases.fixture
-@pytest_cases.parametrize("_connector_cls_mp", [RayConnector, zmq_connector_cls])
-def connector_cls_mp(_connector_cls_mp: type[Connector]) -> type[Connector]:
+@pytest.fixture(params=[RayConnector, lf("zmq_connector_cls")])
+def connector_cls_mp(request: pytest.FixtureRequest) -> type[Connector]:
     """Fixture for `Connector` of various types for use in multiprocess context."""
-    return _connector_cls_mp
+    return request.param
 
 
 @pytest.mark.asyncio
